@@ -59,3 +59,36 @@ passam a funcionar em 3D sem que a lógica de nenhuma delas seja tocada.
 | scroll | distância da câmera |
 
 Todo o resto permanece vanilla.
+
+## Como testar
+
+```bash
+./scripts/run-game.sh
+```
+
+Compila, inicia o jogo pelo SMAPI e filtra o log nas linhas que interessam.
+Para iniciar sem rebuild, rode direto o launcher do SMAPI:
+
+```bash
+cd ~/.steam/debian-installation/steamapps/common/Stardew\ Valley && ./StardewModdingAPI
+```
+
+Pela Steam, ajuste as opções de inicialização do jogo para:
+
+```
+"/home/maicon/.steam/debian-installation/steamapps/common/Stardew Valley/StardewModdingAPI" %command%
+```
+
+### Roteiro de teste da Fase 0/1
+
+1. **O mod carrega?** No console do SMAPI, logo no início, deve aparecer
+   `Stardew Valley 3D 0.1.0 by maicon` na lista de mods, e depois
+   `Stardew Valley 3D carregado. F9 alterna o renderizador.`
+   Nenhum `ERROR` com `StardewValley3D` no nome.
+2. **Carregue um save** (os dois existentes servem) e fique na Fazenda.
+3. **`F9`** — aparece a mensagem `Modo 3D: ON` no HUD e a tela muda para a vista 3D.
+4. **`F10`** — overlay de debug com posição da câmera, tile mirado e contagem de triângulos.
+5. **Mouse / WASD / scroll** — olhar, mover relativo à câmera, afastar a câmera.
+6. **`F9` de novo** a qualquer momento volta ao jogo 2D normal.
+
+O log fica em `~/.config/StardewValley/ErrorLogs/SMAPI-latest.txt`.
