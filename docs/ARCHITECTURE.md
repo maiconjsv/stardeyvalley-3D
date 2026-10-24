@@ -38,20 +38,32 @@ Game1._draw
        └─ SpriteBatch 2D            HUD/menus vanilla + crosshair + debug
 ```
 
-Enquanto isso, `Game1.currentCursorTile` devolve o tile da crosshair (`CursorPatches`), e é
-por aí que as mecânicas vanilla continuam funcionando.
+Enquanto isso, os acessores de mouse do jogo devolvem a posição da crosshair em coordenadas
+de mundo (`CursorPatches`), e é por aí que as mecânicas vanilla continuam funcionando.
 
-## Por que patchar o cursor em vez de reescrever as mecânicas
+## Por que patchar o mouse em vez de reescrever as mecânicas
 
-Praticamente toda ação do Stardew — `Tool.DoFunction`, `GameLocation.checkAction`,
-`Utility.playerCanPlaceItemHere`, mira de slingshot, highlight de tile — resolve o alvo a
-partir do tile sob o cursor. Ao sobrescrever esse único valor, herdamos de graça: arar,
-plantar, regar, colher, minerar, cortar árvore, pescar (lançamento), posicionar objeto,
-alimentar animal, interagir com NPC e abrir porta.
+Verificado no IL do jogo 1.6: tanto `Game1.pressUseToolButton` quanto `Game1.pressActionButton`
+derivam o alvo de **`getOldMouseX() + Game1.viewport.X`**. Sobrescrevendo esses acessores,
+herdamos de graça: arar, plantar, regar, colher, minerar, cortar árvore, pescar (lançamento),
+posicionar objeto, alimentar animal, interagir com NPC e abrir porta.
 
-É a diferença entre "adaptar as mecânicas" (semanas) e "reescrever o jogo" (anos). É o
-pilar do projeto, e qualquer mecânica que não se encaixe nele vira exceção explícita na
-Fase 5, não regra nova.
+É a diferença entre "adaptar as mecânicas" (semanas) e "reescrever o jogo" (anos). É o pilar
+do projeto, e qualquer mecânica que não se encaixe nele vira exceção explícita na Fase 5, não
+regra nova.
+
+Dois detalhes que só a inspeção do IL revelou, e que valem registrar porque custaram tempo:
+
+- **`Game1.currentCursorTile` não serve.** É um campo estático (não propriedade, logo Harmony
+  não patcha) e é lido apenas por `updateCursorTileHint` — alimenta o destaque visual do
+  cursor, não a mira das ferramentas. A primeira versão do mod patchava esse campo e
+  falhava no carregamento.
+- **O parâmetro `ui_scale` dos acessores separa mundo de UI com precisão.** `true` é usado por
+  menus e HUD, `false` pelo mundo. Sobrescrevemos só o segundo, e é por isso que os menus
+  continuam respondendo ao mouse real sem nenhum trabalho extra.
+- **`Game1.game1.IsMouseVisible` tem de continuar `true`.** O jogo lê
+  `wasMouseVisibleThisFrame` para escolher entre o alvo do mouse e o alvo de gamepad; com ele
+  `false`, a nossa mira é ignorada. O cursor é escondido por `Game1.mouseCursorTransparency`.
 
 ## Estratégia de risco: superfície de contato mínima
 

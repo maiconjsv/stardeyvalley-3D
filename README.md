@@ -22,16 +22,16 @@ Fase 0 concluída (scaffold) e Fase 1 iniciada. O que já existe em código:
 | `World/LocationGeometry.cs` | o "WAD": heurística de altura + setores autorais em JSON |
 | `Input/ThirdPersonInput.cs` | mouse-look, movimento relativo à câmera, mira |
 | `Patches/DrawPatches.cs` | desvia `Game1._draw` para o renderizador 3D |
-| `Patches/CursorPatches.cs` | publica o tile da crosshair em `Game1.currentCursorTile` |
+| `Patches/CursorPatches.cs` | faz a crosshair substituir o mouse nas coordenadas de mundo |
 
 ## Como isso funciona (resumo em um parágrafo)
 
 O jogo continua rodando inteiro, sem alteração: tempo, cultivos, NPCs, economia, save.
 Um patch Harmony intercepta o desenho do mundo e, em vez do `SpriteBatch` ortográfico, monta
 uma cena 3D a partir do mesmo estado: o mapa vira malha, cada sprite vira um quad voltado à
-câmera. Um segundo patch faz a crosshair publicar o tile alvo em `Game1.currentCursorTile` —
-e como **toda** ferramenta do Stardew age no tile sob o cursor, regar, cavar, minerar e atacar
-passam a funcionar em 3D sem que a lógica de nenhuma delas seja tocada.
+câmera. Um segundo patch faz a crosshair substituir o mouse nas coordenadas de mundo — e como **toda**
+ferramenta do Stardew resolve o alvo a partir da posição do mouse, regar, cavar, minerar e
+atacar passam a funcionar em 3D sem que a lógica de nenhuma delas seja tocada.
 
 ## Pré-requisitos (ainda não instalados nesta máquina)
 

@@ -125,4 +125,33 @@ public sealed class Camera3D
         tile = new Vector2(MathF.Floor(hit.X), MathF.Floor(hit.Z));
         return true;
     }
+
+    /// <summary>
+    /// Igual ao <see cref="RaycastGroundPlane"/>, mas devolve tambem o ponto exato em pixels
+    /// de mundo. O jogo mira em pixels, nao em tiles: arredondar aqui perderia precisao em
+    /// ferramentas de area e na mira de armas.
+    /// </summary>
+    public bool RaycastGroundPixels(float planeY, out Vector2 tile, out Vector2 pixels)
+    {
+        pixels = Vector2.Zero;
+        Vector3 dir = this.Forward;
+
+        if (MathF.Abs(dir.Y) < 1e-5f)
+        {
+            tile = Vector2.Zero;
+            return false;
+        }
+
+        float t = (planeY - this.Position.Y) / dir.Y;
+        if (t <= 0f)
+        {
+            tile = Vector2.Zero;
+            return false;
+        }
+
+        Vector3 hit = this.Position + dir * t;
+        tile = new Vector2(MathF.Floor(hit.X), MathF.Floor(hit.Z));
+        pixels = new Vector2(hit.X * PixelsPerTile, hit.Z * PixelsPerTile);
+        return true;
+    }
 }

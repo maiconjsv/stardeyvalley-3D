@@ -27,8 +27,10 @@ public sealed class ThirdPersonInput
     private int lastScroll;
     private Point windowCenter;
 
-    /// <summary>Tile sob a crosshair neste tick. Lido pelos patches de cursor.</summary>
+    /// <summary>Tile sob a crosshair neste tick. Usado pelo HUD de debug.</summary>
     public Vector2 AimTile { get; private set; }
+    /// <summary>Ponto exato mirado, em pixels de mundo. Lido pelos patches de cursor.</summary>
+    public Vector2 AimPixel { get; private set; }
     public bool HasAim { get; private set; }
 
     public ThirdPersonInput(IModHelper helper, ModConfig config, Camera3D camera)
@@ -41,9 +43,14 @@ public sealed class ThirdPersonInput
     public void SetActive(bool value)
     {
         this.active = value;
-        Game1.game1.IsMouseVisible = !value;
 
-        if (value)
+        // IsMouseVisible precisa continuar true: o jogo le wasMouseVisibleThisFrame para
+        // decidir entre o alvo do mouse e o alvo de gamepad, e com ele false a nossa mira
+        // seria ignorada. Escondemos o cursor pela transparencia, nao pela visibilidade.
+        Game1.game1.IsMouseVisible = true;
+        if (!value)
+            Game1.mouseCursorTransparency = 1f;
+        else
             this.CenterMouse();
     }
 
@@ -126,8 +133,13 @@ public sealed class ThirdPersonInput
 
     private void UpdateAim()
     {
-        this.HasAim = this.camera.RaycastGroundPlane(0f, out Vector2 tile);
+        this.HasAim = this.camera.RaycastGroundPixels(0f, out Vector2 tile, out Vector2 pixels);
         this.AimTile = tile;
+        this.AimPixel = pixels;
+
+        // Cursor do mouse escondido enquanto a mira 3D manda; menus o trazem de volta.
+        if (Game1.activeClickableMenu is null)
+            Game1.mouseCursorTransparency = 0f;
     }
 
     private int DirectionFromVector(Vector2 v)
