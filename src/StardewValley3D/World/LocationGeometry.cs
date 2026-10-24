@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using StardewValley;
-using xTile.Dimensions;
 using xTile.Tiles;
 
 namespace StardewValley3D.World;
@@ -73,7 +72,7 @@ public sealed class LocationGeometry
                     f = WaterDepth;
 
                 // Camada Buildings com tile e sem passagem: parede solida.
-                Tile? tile = buildings?.Tiles[new Location(x, z)];
+                Tile? tile = buildings?.Tiles[new xTile.Dimensions.Location(x, z)];
                 if (tile is not null && !this.IsPassable(tile))
                     top = DefaultWallHeight;
 
@@ -106,7 +105,7 @@ public sealed class LocationGeometry
 
     private bool HasTileProperty(xTile.Layers.Layer layer, int x, int z, string property)
     {
-        Tile? tile = layer.Tiles[new Location(x, z)];
+        Tile? tile = layer.Tiles[new xTile.Dimensions.Location(x, z)];
         return tile is not null && tile.TileIndexProperties.ContainsKey(property);
     }
 
