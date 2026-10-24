@@ -35,17 +35,33 @@ public sealed class Camera3D
         this.Distance = config.CameraDistance;
     }
 
+    /// <summary>Distancia zero significa primeira pessoa: a camera fica nos olhos.</summary>
+    public bool IsFirstPerson => this.Distance <= 0.01f;
+
     /// <summary>Converte posicao em pixels do jogo para unidades de mundo (sem altura).</summary>
     public static Vector3 WorldFromPixels(Vector2 pixels, float height = 0f)
         => new(pixels.X / PixelsPerTile, height, pixels.Y / PixelsPerTile);
 
+    /// <summary>
+    /// Zero e primeira pessoa; acima de 1.5 e terceira pessoa. A faixa entre os dois e
+    /// pulada porque a camera ficaria dentro do proprio corpo do jogador.
+    /// </summary>
     public void Zoom(float delta)
-        => this.Distance = MathHelper.Clamp(this.Distance + delta, 1.5f, 14f);
+    {
+        float next = this.Distance + delta;
+
+        if (this.IsFirstPerson)
+            next = delta > 0f ? 1.5f : 0f;
+        else if (next < 1.5f)
+            next = 0f;
+
+        this.Distance = MathHelper.Clamp(next, 0f, 14f);
+    }
 
     public void Update(float elapsedSeconds, float aspectRatio)
     {
         Vector2 anchorPixels = Game1.player?.getStandingPosition() ?? Vector2.Zero;
-        Vector3 desiredTarget = WorldFromPixels(anchorPixels, this.config.CameraHeight);
+        Vector3 desiredTarget = WorldFromPixels(anchorPixels, this.config.EyeHeight);
 
         if (!this.initialized)
         {
@@ -62,13 +78,20 @@ public sealed class Camera3D
             this.smoothedTarget = Vector3.Lerp(this.smoothedTarget, desiredTarget, MathHelper.Clamp(lerp, 0f, 1f));
         }
 
-        this.Pitch = MathHelper.Clamp(this.Pitch, -1.45f, 1.0f);
-        this.Target = this.smoothedTarget;
+        this.Pitch = MathHelper.Clamp(this.Pitch, -1.45f, 1.45f);
 
-        Vector3 offset = this.Forward * -this.Distance;
-        this.Position = this.Target + offset;
+        if (this.IsFirstPerson)
+        {
+            this.Position = this.smoothedTarget;
+            this.Target = this.Position + this.Forward;
+        }
+        else
+        {
+            this.Target = this.smoothedTarget;
+            this.Position = this.Target - this.Forward * this.Distance;
 
-        // TODO Fase 1: colisao da camera com paredes (raycast Target -> Position, encurtar Distance).
+            // TODO Fase 2: colisao da camera com paredes (raycast Target -> Position).
+        }
 
         this.View = Matrix.CreateLookAt(this.Position, this.Target, Vector3.Up);
         this.Projection = Matrix.CreatePerspectiveFieldOfView(

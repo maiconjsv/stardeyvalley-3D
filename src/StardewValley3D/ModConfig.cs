@@ -10,14 +10,16 @@ public sealed class ModConfig
     public KeybindList ToggleRenderer { get; set; } = KeybindList.Parse("F9");
     public KeybindList ToggleDebugHud { get; set; } = KeybindList.Parse("F10");
     public KeybindList ToggleMouseLook { get; set; } = KeybindList.Parse("LeftAlt");
+    /// <summary>Abre o editor de cenario em jogo.</summary>
+    public KeybindList ToggleEditor { get; set; } = KeybindList.Parse("F7");
 
     // --- Camera ---
     /// <summary>Campo de visao vertical, em graus.</summary>
     public float FieldOfView { get; set; } = 70f;
-    /// <summary>Distancia da camera ao jogador, em tiles.</summary>
-    public float CameraDistance { get; set; } = 4.5f;
-    /// <summary>Altura do alvo da camera acima dos pes do jogador, em tiles.</summary>
-    public float CameraHeight { get; set; } = 1.6f;
+    /// <summary>Distancia da camera ao jogador, em tiles. Zero = primeira pessoa.</summary>
+    public float CameraDistance { get; set; } = 0f;
+    /// <summary>Altura dos olhos acima dos pes do jogador, em tiles.</summary>
+    public float EyeHeight { get; set; } = 1.35f;
     public float MouseSensitivity { get; set; } = 0.15f;
     public bool InvertPitch { get; set; } = false;
     /// <summary>0 = camera rigida (anti motion sickness), 1 = suavizacao maxima.</summary>
@@ -27,7 +29,11 @@ public sealed class ModConfig
     /// <summary>Altura em pixels do render target interno; 0 = resolucao nativa.</summary>
     public int InternalResolutionHeight { get; set; } = 400;
     public bool DistanceFog { get; set; } = true;
-    public bool CrossBillboardTrees { get; set; } = true;
+    /// <summary>Espessura da extrusao dos sprites, em pixels do sprite.</summary>
+    public int SpriteThicknessPixels { get; set; } = 3;
+    /// <summary>Cenario (arvores, objetos) como duas fatias perpendiculares, com volume de
+    /// qualquer angulo. Desligar economiza geometria.</summary>
+    public bool CrossMeshProps { get; set; } = true;
     public bool BlobShadows { get; set; } = true;
 
     // --- Seguranca / fallback ---

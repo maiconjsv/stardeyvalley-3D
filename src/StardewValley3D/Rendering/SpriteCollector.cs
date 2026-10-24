@@ -1,109 +1,175 @@
 using System;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using StardewValley;
 using StardewValley.TerrainFeatures;
+using SObject = StardewValley.Object;
 
 namespace StardewValley3D.Rendering;
 
 /// <summary>
-/// Varre o estado da localizacao e emite um billboard por sprite. Este e o coracao da
-/// Fase 3: cada tipo de entidade do Stardew precisa de um mapeamento aqui.
+/// Varre o estado da localizacao e emite uma instancia volumetrica por sprite.
 ///
-/// Cobertura planejada: Farmer (local e remotos), NPC, Monster, FarmAnimal, Object,
-/// TerrainFeature (arvore, grama, cultivo, HoeDirt), ResourceClump, Building, Debris,
-/// Projectile, Furniture, CrabPot, Fence.
+/// Duas formas de montagem, conforme o tipo:
+///   - <b>personagens</b> (jogador, NPC, monstro, animal): fatia extrudada que gira para
+///     encarar a camera, com o frame direcional escolhido pelo angulo -- o truque do Doom,
+///     agora com espessura real;
+///   - <b>cenario</b> (arvore, objeto, pedra): duas fatias perpendiculares (cross), com
+///     orientacao fixa, que tem volume de qualquer angulo.
 /// </summary>
 public sealed class SpriteCollector
 {
-    /// <summary>Um tile do Stardew tem 64 px; sprites sao medidos nessa escala.</summary>
-    private const float Px = 1f / 64f;
-
-    public void Collect(GameLocation location, Camera3D camera, ModConfig config, BillboardBatch batch)
+    public void Collect(GameLocation location, Camera3D camera, ModConfig config, SpriteMeshBuilder builder, SpriteMeshBatch batch)
     {
-        this.CollectFarmers(location, camera, config, batch);
-        this.CollectCharacters(location, camera, config, batch);
-        this.CollectTerrainFeatures(location, config, batch);
+        this.CollectFarmers(location, camera, config, builder, batch);
+        this.CollectCharacters(location, camera, config, builder, batch);
+        this.CollectTerrainFeatures(location, config, builder, batch);
+        this.CollectObjects(location, config, builder, batch);
 
-        // TODO Fase 3: objects, resource clumps, buildings, debris, projectiles, animals.
+        // TODO Fase 3: resource clumps, buildings, debris, projectiles, moveis.
     }
 
-    private void CollectFarmers(GameLocation location, Camera3D camera, ModConfig config, BillboardBatch batch)
+    private void CollectFarmers(GameLocation location, Camera3D camera, ModConfig config, SpriteMeshBuilder builder, SpriteMeshBatch batch)
     {
         foreach (Farmer farmer in location.farmers)
         {
-            Vector3 anchor = Camera3D.WorldFromPixels(farmer.getStandingPosition());
-            batch.Add(new Billboard
+            // Em primeira pessoa nao desenhamos o proprio corpo.
+            // TODO Fase 7: viewmodel da ferramenta na mao, no estilo Doom.
+            if (camera.IsFirstPerson && farmer.IsLocalPlayer)
+                continue;
+
+            if (farmer.FarmerRenderer is null)
+                continue;
+
+            Texture2D? texture = GetFarmerTexture(farmer);
+            if (texture is null)
+                continue;
+
+            var source = new Rectangle(0, 0, 16, 32);
+            SpriteMesh? mesh = builder.GetOrBuild(texture, source, config.SpriteThicknessPixels, cross: false);
+            if (mesh is null)
+                continue;
+
+            batch.Add(new SpriteInstance
             {
-                Anchor = anchor,
-                Texture = farmer.FarmerRenderer.textureName.Value is null
-                    ? Game1.staminaRect
-                    : Game1.content.Load<Microsoft.Xna.Framework.Graphics.Texture2D>(farmer.FarmerRenderer.textureName.Value),
-                Source = new Rectangle(0, 0, 16, 32),
-                Size = new Vector2(16 * Px * 4f, 32 * Px * 4f),
-                Tint = Color.White,
-                FlipHorizontal = this.ShouldFlip(farmer, camera)
+                Mesh = mesh,
+                Anchor = Camera3D.WorldFromPixels(farmer.getStandingPosition()),
+                Yaw = camera.Yaw,
+                Tint = Color.White
             });
         }
     }
 
-    private void CollectCharacters(GameLocation location, Camera3D camera, ModConfig config, BillboardBatch batch)
+    private void CollectCharacters(GameLocation location, Camera3D camera, ModConfig config, SpriteMeshBuilder builder, SpriteMeshBatch batch)
     {
         foreach (NPC npc in location.characters)
         {
-            if (npc.Sprite?.Texture is null)
+            if (npc.Sprite?.Texture is null || npc.IsInvisible)
                 continue;
 
-            Vector3 anchor = Camera3D.WorldFromPixels(npc.getStandingPosition());
             Rectangle source = npc.Sprite.SourceRect;
+            SpriteMesh? mesh = builder.GetOrBuild(npc.Sprite.Texture, source, config.SpriteThicknessPixels, cross: false);
+            if (mesh is null)
+                continue;
 
-            batch.Add(new Billboard
+            batch.Add(new SpriteInstance
             {
-                Anchor = anchor,
-                Texture = npc.Sprite.Texture,
-                Source = source,
-                Size = new Vector2(source.Width * Px * 4f, source.Height * Px * 4f),
+                Mesh = mesh,
+                Anchor = Camera3D.WorldFromPixels(npc.getStandingPosition()),
+                Yaw = camera.Yaw,
                 Tint = Color.White,
-                FlipHorizontal = this.ShouldFlip(npc, camera)
+                FlipHorizontal = npc.Sprite.CurrentAnimation is null && npc.FacingDirection == 3
+            });
+        }
+
+        foreach (FarmAnimal animal in location.animals.Values)
+        {
+            if (animal.Sprite?.Texture is null)
+                continue;
+
+            SpriteMesh? mesh = builder.GetOrBuild(animal.Sprite.Texture, animal.Sprite.SourceRect, config.SpriteThicknessPixels, cross: false);
+            if (mesh is null)
+                continue;
+
+            batch.Add(new SpriteInstance
+            {
+                Mesh = mesh,
+                Anchor = Camera3D.WorldFromPixels(animal.getStandingPosition()),
+                Yaw = camera.Yaw,
+                Tint = Color.White
             });
         }
     }
 
-    private void CollectTerrainFeatures(GameLocation location, ModConfig config, BillboardBatch batch)
+    private void CollectTerrainFeatures(GameLocation location, ModConfig config, SpriteMeshBuilder builder, SpriteMeshBatch batch)
     {
         foreach ((Vector2 tile, TerrainFeature feature) in location.terrainFeatures.Pairs)
         {
             switch (feature)
             {
-                case Tree tree when tree.texture.Value is not null:
-                    batch.Add(new Billboard
-                    {
-                        Anchor = new Vector3(tile.X + 0.5f, 0f, tile.Y + 0.5f),
-                        Texture = tree.texture.Value,
-                        Source = Tree.treeTopSourceRect,
-                        Size = new Vector2(3f, 5f),
-                        Tint = Color.White,
-                        Cross = config.CrossBillboardTrees
-                    });
-                    break;
+                case Tree tree when tree.texture.Value is not null && tree.growthStage.Value >= 5:
+                {
+                    SpriteMesh? mesh = builder.GetOrBuild(
+                        tree.texture.Value, Tree.treeTopSourceRect, config.SpriteThicknessPixels, config.CrossMeshProps);
 
-                // TODO Fase 3: HoeDirt (cultivo + estagio), Grass, FruitTree, Flooring.
+                    if (mesh is not null)
+                    {
+                        batch.Add(new SpriteInstance
+                        {
+                            Mesh = mesh,
+                            Anchor = new Vector3(tile.X + 0.5f, 0f, tile.Y + 1f),
+                            Tint = Color.White
+                        });
+                    }
+                    break;
+                }
+
+                // TODO Fase 3: HoeDirt (cultivo por estagio), Grass, FruitTree, Flooring.
             }
         }
     }
 
-    /// <summary>
-    /// O Stardew tem 4 direcoes de sprite; a camera pode estar em qualquer angulo. Espelhamos
-    /// quando a camera ve o personagem pelo lado oposto ao do frame disponivel -- o mesmo
-    /// truque que o Doom faz com seus 8 angulos.
-    /// </summary>
-    private bool ShouldFlip(Character character, Camera3D camera)
+    private void CollectObjects(GameLocation location, ModConfig config, SpriteMeshBuilder builder, SpriteMeshBatch batch)
     {
-        // facingDirection: 0=norte, 1=leste, 2=sul, 3=oeste
-        if (character.FacingDirection is not (1 or 3))
-            return false;
+        foreach ((Vector2 tile, SObject obj) in location.objects.Pairs)
+        {
+            Texture2D texture;
+            Rectangle source;
 
-        Vector2 right = camera.FlatRight;
-        bool cameraSeesEast = right.X >= 0f;
-        return character.FacingDirection == 1 ? !cameraSeesEast : cameraSeesEast;
+            try
+            {
+                var data = StardewValley.ItemRegistry.GetDataOrErrorItem(obj.QualifiedItemId);
+                texture = data.GetTexture();
+                source = data.GetSourceRect();
+            }
+            catch (Exception)
+            {
+                continue;
+            }
+
+            SpriteMesh? mesh = builder.GetOrBuild(texture, source, config.SpriteThicknessPixels, config.CrossMeshProps);
+            if (mesh is null)
+                continue;
+
+            batch.Add(new SpriteInstance
+            {
+                Mesh = mesh,
+                Anchor = new Vector3(tile.X + 0.5f, 0f, tile.Y + 0.5f),
+                Tint = Color.White
+            });
+        }
+    }
+
+    private static Texture2D? GetFarmerTexture(Farmer farmer)
+    {
+        try
+        {
+            string? name = farmer.FarmerRenderer.textureName.Value;
+            return name is null ? null : Game1.content.Load<Texture2D>(name);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 }

@@ -29,9 +29,22 @@ public sealed class DebugHud
             $"SV3D  loc={Game1.currentLocation?.NameOrUniqueName ?? "-"}",
             $"cam   pos={camera.Position.X:F1},{camera.Position.Y:F1},{camera.Position.Z:F1}  yaw={MathHelper.ToDegrees(camera.Yaw):F0}  pitch={MathHelper.ToDegrees(camera.Pitch):F0}  dist={camera.Distance:F1}",
             $"aim   tile={mod.Input.AimTile.X:F0},{mod.Input.AimTile.Y:F0}  valid={mod.Input.HasAim}",
-            $"draw  tris={mod.Renderer.LastTriangleCount}  billboards={mod.Renderer.LastBillboardCount}",
+            $"draw  tris={mod.Renderer.LastTriangleCount}  sprites={mod.Renderer.LastSpriteCount}",
             $"mesh  {mod.Renderer.LastMeshSummary}"
         };
+
+        if (mod.Editor.Active && Game1.currentLocation is not null)
+        {
+            string[] help = mod.Editor.GetHelpLines(
+                mod.Renderer.GetGeometry(Game1.currentLocation), mod.Input.AimTile);
+
+            for (int i = 0; i < help.Length; i++)
+            {
+                Vector2 at = new(16f, Game1.graphics.GraphicsDevice.Viewport.Height - 150f + i * 26f);
+                batch.DrawString(Game1.smallFont, help[i], at + new Vector2(2f, 2f), Color.Black * 0.6f);
+                batch.DrawString(Game1.smallFont, help[i], at, Color.Lime);
+            }
+        }
 
         for (int i = 0; i < lines.Length; i++)
         {

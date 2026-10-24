@@ -8,6 +8,7 @@ using StardewValley3D.Hud;
 using StardewValley3D.Input;
 using StardewValley3D.Patches;
 using StardewValley3D.Rendering;
+using StardewValley3D.World;
 
 namespace StardewValley3D;
 
@@ -21,8 +22,9 @@ public sealed class ModEntry : Mod
 
     public ModConfig Config = null!;
     public Renderer3D Renderer = null!;
-    public ThirdPersonInput Input = null!;
+    public FirstPersonInput Input = null!;
     public DebugHud Debug = null!;
+    public GeometryEditor Editor = null!;
 
     /// <summary>Se o render 3D esta ativo (toggle do usuario).</summary>
     public bool Enabled { get; private set; }
@@ -33,8 +35,9 @@ public sealed class ModEntry : Mod
         this.Config = helper.ReadConfig<ModConfig>();
 
         this.Renderer = new Renderer3D(this.Monitor, this.Config);
-        this.Input = new ThirdPersonInput(helper, this.Config, this.Renderer.Camera);
+        this.Input = new FirstPersonInput(helper, this.Config, this.Renderer.Camera);
         this.Debug = new DebugHud(this.Config);
+        this.Editor = new GeometryEditor(helper, this.Monitor);
 
         helper.Events.GameLoop.GameLaunched += this.OnGameLaunched;
         helper.Events.GameLoop.UpdateTicked += this.OnUpdateTicked;
@@ -65,6 +68,27 @@ public sealed class ModEntry : Mod
 
         if (this.Config.ToggleDebugHud.JustPressed())
             this.Debug.Visible = !this.Debug.Visible;
+
+        if (this.Config.ToggleEditor.JustPressed())
+            this.Editor.Toggle();
+
+        if (this.Editor.Active && Context.IsWorldReady && Game1.currentLocation is not null)
+        {
+            bool ctrl = this.Helper.Input.IsDown(SButton.LeftControl) || this.Helper.Input.IsDown(SButton.RightControl);
+
+            if (ctrl && this.Helper.Input.GetState(SButton.S) == SButtonState.Pressed)
+            {
+                this.Editor.Save(
+                    this.Renderer.GetGeometry(Game1.currentLocation),
+                    Game1.currentLocation.NameOrUniqueName);
+            }
+
+            if (this.Helper.Input.GetState(SButton.F5) == SButtonState.Pressed)
+            {
+                this.Renderer.ReloadGeometry(Game1.currentLocation);
+                Game1.addHUDMessage(new HUDMessage("Geometria recarregada do disco", 2));
+            }
+        }
     }
 
     private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
@@ -74,6 +98,15 @@ public sealed class ModEntry : Mod
 
         this.Input.Update();
         this.Renderer.Update(Game1.currentGameTime ?? new GameTime());
+
+        // O editor reconstroi a malha a cada alteracao: o retorno visual imediato e o que
+        // torna a autoria viavel.
+        if (this.Editor.Active && Game1.currentLocation is not null)
+        {
+            LocationGeometry geometry = this.Renderer.GetGeometry(Game1.currentLocation);
+            if (this.Editor.HandleInput(geometry, this.Input.AimTile, this.Input.HasAim))
+                this.Renderer.InvalidateMesh(Game1.currentLocation);
+        }
     }
 
     /// <summary>

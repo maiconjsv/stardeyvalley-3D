@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -8,26 +9,27 @@ using StardewValley3D.World;
 namespace StardewValley3D.Rendering;
 
 /// <summary>
-/// Orquestra o frame 3D: estado do device, malha estatica da localizacao, billboards e
-/// iluminacao. Nao sabe nada sobre SMAPI/Harmony -- recebe o comando de desenhar.
+/// Orquestra o frame 3D: estado do device, malha estatica da localizacao, sprites
+/// volumetricos e iluminacao. Nao sabe nada sobre SMAPI/Harmony -- recebe o comando de
+/// desenhar.
 /// </summary>
 public sealed class Renderer3D
 {
     private readonly IMonitor monitor;
     private readonly ModConfig config;
     private readonly WorldGeometryBuilder geometryBuilder;
-    private readonly BillboardBatch billboards = new();
     private readonly SpriteCollector collector = new();
+    private readonly SpriteMeshBatch sprites = new();
     private readonly Dictionary<string, LocationGeometry> geometryByLocation = new();
 
     private GraphicsDevice device = null!;
     private BasicEffect effect = null!;
     private IModHelper helper = null!;
+    private SpriteMeshBuilder spriteMeshes = null!;
 
     public Camera3D Camera { get; }
     public int LastTriangleCount { get; private set; }
-    public int LastBillboardCount { get; private set; }
-    /// <summary>Resumo da malha da localizacao atual, para diagnostico na tela.</summary>
+    public int LastSpriteCount { get; private set; }
     public string LastMeshSummary { get; private set; } = "-";
 
     public Renderer3D(IMonitor monitor, ModConfig config)
@@ -42,15 +44,16 @@ public sealed class Renderer3D
     {
         this.device = device;
         this.helper = helper;
+        this.spriteMeshes = new SpriteMeshBuilder(device, this.monitor);
+        this.sprites.Initialize(device);
+
         this.effect = new BasicEffect(device)
         {
             TextureEnabled = true,
             VertexColorEnabled = false,
             LightingEnabled = false,
-            FogEnabled = this.config.DistanceFog,
             FogStart = 12f,
-            FogEnd = 44f,
-            FogColor = Color.Black.ToVector3()
+            FogEnd = 44f
         };
     }
 
@@ -58,12 +61,24 @@ public sealed class Renderer3D
     {
         this.geometryBuilder.InvalidateAll();
         this.geometryByLocation.Clear();
+        this.spriteMeshes?.Clear();
     }
 
     public void OnWarped(GameLocation? location)
     {
         if (location is not null)
             this.geometryBuilder.Invalidate(location.NameOrUniqueName);
+    }
+
+    /// <summary>Forca a reconstrucao da malha apos uma edicao no editor de cenario.</summary>
+    public void InvalidateMesh(GameLocation location)
+        => this.geometryBuilder.Invalidate(location.NameOrUniqueName);
+
+    /// <summary>Descarta a geometria da localizacao para recarregar o JSON do disco.</summary>
+    public void ReloadGeometry(GameLocation location)
+    {
+        this.geometryByLocation.Remove(location.NameOrUniqueName);
+        this.geometryBuilder.Invalidate(location.NameOrUniqueName);
     }
 
     /// <summary>Consultado pelo fallback: a localizacao tem geometria utilizavel?</summary>
@@ -85,7 +100,6 @@ public sealed class Renderer3D
 
         LocationGeometry geometry = this.GetGeometry(location);
         LocationMesh mesh = this.geometryBuilder.GetOrBuild(this.device, location, geometry);
-
         Color horizon = this.HorizonColor();
 
         this.device.Clear(ClearOptions.Target | ClearOptions.DepthBuffer, horizon, 1f, 0);
@@ -115,7 +129,7 @@ public sealed class Renderer3D
         this.LastMeshSummary = $"chunks={mesh.ChunkCount} submalhas={mesh.SubmeshCount} tris={mesh.TriangleCount}";
 
         this.DrawStaticMesh(mesh);
-        this.DrawBillboards(location);
+        this.DrawSprites(location);
     }
 
     private void DrawStaticMesh(LocationMesh mesh)
@@ -146,19 +160,57 @@ public sealed class Renderer3D
         this.device.SetVertexBuffer(null);
     }
 
-    private void DrawBillboards(GameLocation location)
+    private void DrawSprites(GameLocation location)
     {
-        this.billboards.Begin();
-        this.collector.Collect(location, this.Camera, this.config, this.billboards);
-        this.billboards.End(this.device, this.effect, this.Camera);
-        this.LastBillboardCount = this.billboards.LastQuadCount;
+        this.sprites.Begin();
+        this.collector.Collect(location, this.Camera, this.config, this.spriteMeshes, this.sprites);
+        this.sprites.End(this.device, this.Camera, Color.White);
+
+        this.LastSpriteCount = this.sprites.LastInstanceCount;
+        this.LastTriangleCount += this.sprites.LastTriangleCount;
+    }
+
+    /// <summary>
+    /// Desenha o contorno do tile mirado. E o feedback que torna o editor de cenario
+    /// utilizavel: sem ele, nao da para saber qual tile vai ser alterado.
+    /// </summary>
+    public void DrawTileHighlight(Vector2 tile, int brushSize, Color color)
+    {
+        int radius = brushSize / 2;
+        float x0 = tile.X - radius;
+        float z0 = tile.Y - radius;
+        float x1 = tile.X + radius + 1;
+        float z1 = tile.Y + radius + 1;
+        float y = this.GetGeometry(Game1.currentLocation).FloorHeightAt((int)tile.X, (int)tile.Y) + 0.02f;
+
+        var corners = new[]
+        {
+            new VertexPositionColor(new Vector3(x0, y, z0), color),
+            new VertexPositionColor(new Vector3(x1, y, z0), color),
+            new VertexPositionColor(new Vector3(x1, y, z1), color),
+            new VertexPositionColor(new Vector3(x0, y, z1), color),
+            new VertexPositionColor(new Vector3(x0, y, z0), color)
+        };
+
+        this.effect.TextureEnabled = false;
+        this.effect.VertexColorEnabled = true;
+        this.effect.FogEnabled = false;
+        this.device.DepthStencilState = DepthStencilState.DepthRead;
+
+        foreach (EffectPass pass in this.effect.CurrentTechnique.Passes)
+        {
+            pass.Apply();
+            this.device.DrawUserPrimitives(PrimitiveType.LineStrip, corners, 0, 4);
+        }
+
+        this.effect.TextureEnabled = true;
+        this.effect.VertexColorEnabled = false;
     }
 
     /// <summary>
     /// Cor do ceu/horizonte, usada no clear e no fog. Derivada da hora do jogo para que
     /// dia e noite continuem valendo sem duplicarmos regra nenhuma.
-    /// TODO Fase 6: substituir por iluminacao real a partir de Game1.outdoorLight e das
-    /// luzes pontuais em Game1.currentLightSources.
+    /// TODO Fase 6: iluminacao real a partir de Game1.outdoorLight e das luzes pontuais.
     /// </summary>
     private Color HorizonColor()
     {
@@ -170,7 +222,7 @@ public sealed class Renderer3D
         return Color.Lerp(new Color(132, 186, 227), new Color(18, 20, 48), t);
     }
 
-    private LocationGeometry GetGeometry(GameLocation location)
+    public LocationGeometry GetGeometry(GameLocation location)
     {
         string key = location.NameOrUniqueName;
         if (this.geometryByLocation.TryGetValue(key, out LocationGeometry? cached))
@@ -178,12 +230,12 @@ public sealed class Renderer3D
 
         var geometry = new LocationGeometry(location);
 
-        // Dado autoral opcional: assets/geometry/<Location>.json (ver Fase 2).
+        // Dado autoral opcional, produzido pelo editor de cenario (ver Fase 2).
         GeometryFile? file = this.helper.Data.ReadJsonFile<GeometryFile>($"assets/geometry/{key}.json");
         if (file is not null)
         {
             geometry.Sectors.AddRange(file.Sectors);
-            this.monitor.Log($"Geometria autoral carregada para '{key}' ({file.Sectors.Count} setores).", LogLevel.Trace);
+            this.monitor.Log($"Geometria autoral carregada para '{key}' ({file.Sectors.Count} setores).", LogLevel.Debug);
         }
 
         geometry.Bake();

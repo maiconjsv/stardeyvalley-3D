@@ -1,8 +1,8 @@
 # Stardew Valley 3D — Escopo do projeto
 
-Mod que converte Stardew Valley 1.6 em um jogo **3D em terceira pessoa com sprites 2D
-billboard** (estética Doom / Warhammer 40k: Boltgun), **mantendo toda a lógica original
-do jogo intacta** e adaptando as mecânicas para o espaço 3D.
+Mod que converte Stardew Valley 1.6 em um jogo **3D em primeira pessoa** no qual os assets
+2D originais são **extrudados em volumes 3D** (estética Doom / Warhammer 40k: Boltgun),
+**mantendo toda a lógica original do jogo intacta** e adaptando as mecânicas para o espaço 3D.
 
 ## Princípio arquitetural central
 
@@ -31,8 +31,9 @@ Consequências diretas:
 |---|---|---|
 | Chão / teto | setores com altura | camadas `Back`/`Front` do mapa xTile extrudadas em quads |
 | Paredes | linedefs | derivadas de colisão (`Buildings` layer) + height map autoral |
-| Inimigos/objetos | sprites billboard | todo sprite do SDV (NPC, árvore, cultivo, objeto, debris) como quad voltado à câmera |
+| Inimigos/objetos | sprites billboard planos | **sprites extrudados**: cada silhueta vira um volume com espessura real |
 | Sprites direcionais | 8 ângulos | SDV tem 4 (N/S/L/O) — escolhemos o frame pelo ângulo relativo à câmera |
+| Câmera | primeira pessoa | primeira pessoa (terceira pessoa continua disponível por config) |
 | Iluminação | setor + fog | luz do dia/estação do SDV + fog de distância + luzes pontuais (lanterna, tochas) |
 | Filtro | low-res + dither | render target em resolução reduzida + nearest-neighbor + paleta opcional |
 
@@ -78,8 +79,10 @@ O SDV **não tem dado de altura**. Esta é a maior fase de conteúdo. Estratégi
 2. **Height map autoral por localização** (`assets/geometry/<Location>.json`):
    setores no estilo Doom (`floorHeight`, `ceilHeight`, textura de parede, offset)
    sobrepondo a heurística onde ela erra — Farm, Town, Beach, Mountain, Mines, interiores.
-3. **Ferramenta de autoria** (`tools/geometry-editor/`): editor web que carrega o `.tmx`
-   e deixa pintar alturas por tile, exportando o JSON.
+3. **Editor de cenário em jogo** ✅ (`World/GeometryEditor.cs`): mira no tile com a
+   crosshair e ajusta altura de chão e parede ao vivo, com a malha reconstruída a cada
+   mudança e gravação em `assets/geometry/<Localizacao>.json`. Substituiu a ideia original
+   de um editor web externo: sem ver o resultado em 3D na hora, a autoria é inviável.
 
 - Interiores: teto fechado + iluminação de ambiente (crítico para o look Boltgun)
 - Minas: já são grid procedural → gerador de geometria dedicado, o melhor caso de uso
@@ -87,35 +90,40 @@ O SDV **não tem dado de altura**. Esta é a maior fase de conteúdo. Estratégi
 
 **Aceite:** Farm, Town, FarmHouse, SeedShop e Mines(1-20) com volume correto e sem buracos.
 
-## Fase 3 — Billboards (tudo que é sprite)
-**Objetivo:** jogador, NPCs, árvores, cultivos, objetos e partículas no espaço 3D.
+## Fase 3 — Volumetrização dos sprites ✅ (base implementada)
+**Objetivo:** os assets 2D ganham profundidade real, em vez de serem quads planos.
 
-- `BillboardBatch`: quads Y-axis-aligned (como Doom), um draw call por atlas, ordenados por distância
-- Alpha test (não alpha blend) para evitar artefato de depth sort nos sprites
-- Mapeamento de todo sprite desenhado: `Farmer`, `NPC`, `Monster`, `Object`, `TerrainFeature`
-  (árvore, grama, cultivo), `ResourceClump`, `Debris`, `Projectile`, `FarmAnimal`, `Building`
-- **Sprites direcionais:** escolher entre os 4 frames de direção do SDV pelo ângulo
-  entre o facing do personagem e a câmera (é exatamente o truque do Doom, com 4 ângulos)
-- Sombra de blob projetada no chão
-- Sprites "altos" (árvore, prédio) como quad vertical escalado; opcional cross-billboard
-  (2 quads em X) para árvores, que lê muito melhor em 3ª pessoa
+O processo, em `SpriteMeshBuilder`:
+- a face frontal e a traseira são quads texturizados, recortados por **alpha test**;
+- cada aresta de fronteira da silhueta (pixel opaco vizinho de transparente) vira um quad
+  lateral com a cor daquele pixel — é daí que vem a espessura;
+- as arestas são agrupadas em corridas antes de virar geometria (um contorno 16×32 cai de
+  ~200 quads para algumas dezenas);
+- tudo cacheado por (textura, retângulo, espessura).
 
-**Aceite:** nenhum sprite flutuando/afundado; árvores e NPCs legíveis de qualquer ângulo.
+Duas formas de montagem:
+- **slab** — uma fatia extrudada, para personagens, combinada com escolha de frame
+  direcional e rotação para encarar a câmera;
+- **cross** — duas fatias perpendiculares, para árvores e objetos, que assim têm volume de
+  qualquer ângulo sem depender da câmera.
 
-## Fase 4 — Câmera e input em terceira pessoa
-**Objetivo:** controle que parece um jogo 3D, mas que o `Farmer` entende.
+- [x] Extrusão com merge de arestas, cache, alpha test
+- [x] Jogador (remoto), NPC, animal, árvore, objeto
+- [ ] Cultivos por estágio, grama, resource clumps, construções, debris, projéteis, móveis
+- [ ] Sombra projetada
+- [ ] Instancing por hardware (hoje é uma draw call por instância)
 
-- Mouse-look (yaw/pitch), scroll = distância da câmera, invertível
-- Movimento relativo à câmera → tradução para `Farmer.setMoving()` / `movementDirections`
-  (inclui diagonal, que o SDV suporta)
-- Facing do jogador: segue a câmera quando há mira ativa, segue o movimento caso contrário
-- **Mira por raycast:** crosshair → ray → interseção com o plano do tile → `Game1.currentCursorTile`.
-  É o ponto-chave: todas as ferramentas do SDV usam o tile sob o cursor, então ao sobrescrever
-  esse valor, farming/mining/combate "simplesmente funcionam".
-- Gamepad: layout de shooter 3ª pessoa
-- Travamento de câmera em diálogo/menu/cutscene, com cursor liberado
+## Fase 4 — Primeira pessoa
+**Objetivo:** controle de FPS, com o corpo do jogador fora de cena.
 
-**Aceite:** regar, cavar, derrubar árvore e atacar slime usando só crosshair + WASD + mouse.
+- [x] Câmera nos olhos (`EyeHeight`), mouse-look, sem corpo desenhado
+- [x] Movimento relativo à câmera traduzido para `Farmer.setMoving()`
+- [x] Facing do corpo sempre acompanha o olhar
+- [x] **Mira por raycast** publicada nos acessores de mouse do jogo
+- [x] Scroll alterna primeira ↔ terceira pessoa (distância 0 ou ≥ 1.5)
+- [ ] **Viewmodel**: ferramenta/arma na mão, no estilo Doom
+- [ ] Head-bob, FOV configurável, snap-turn (acessibilidade)
+- [ ] Gamepad
 
 ## Fase 5 — Adaptação das mecânicas principais
 **Objetivo:** cada mecânica do jogo revisada no contexto 3D. Nada removido.

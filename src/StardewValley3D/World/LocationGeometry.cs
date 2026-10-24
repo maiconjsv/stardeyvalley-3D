@@ -35,6 +35,14 @@ public sealed class LocationGeometry
     /// <summary>True quando ha dado autoral; usado pelo fallback da config.</summary>
     public bool IsAuthored { get; private set; }
 
+    /// <summary>Edicoes feitas no editor em jogo, por tile. E o que vai para o JSON.</summary>
+    private readonly Dictionary<(int X, int Z), (float Floor, float WallTop)> edits = new();
+
+    public int EditCount => this.edits.Count;
+    public bool HasUnsavedEdits { get; private set; }
+    public int Width => this.width;
+    public int Height => this.height;
+
     public LocationGeometry(GameLocation location)
     {
         this.location = location;
@@ -50,8 +58,74 @@ public sealed class LocationGeometry
     public float WallTopAt(int x, int z)
         => this.InBounds(x, z) ? this.wallTop[z * this.width + x] : 0f;
 
-    private bool InBounds(int x, int z)
+    public bool InBounds(int x, int z)
         => x >= 0 && z >= 0 && x < this.width && z < this.height;
+
+    /// <summary>Aplica uma edicao de tile, registrando-a para serializacao.</summary>
+    public void Edit(int x, int z, float floorHeight, float wallTop)
+    {
+        if (!this.InBounds(x, z))
+            return;
+
+        int i = z * this.width + x;
+        this.floor[i] = floorHeight;
+        this.wallTop[i] = wallTop;
+        this.edits[(x, z)] = (floorHeight, wallTop);
+        this.HasUnsavedEdits = true;
+    }
+
+    /// <summary>Remove a edicao de um tile e devolve o valor da heuristica.</summary>
+    public void ClearEdit(int x, int z)
+    {
+        if (!this.InBounds(x, z))
+            return;
+
+        this.edits.Remove((x, z));
+        this.HasUnsavedEdits = true;
+        this.Edit(x, z, 0f, 0f);
+        this.edits.Remove((x, z));
+    }
+
+    /// <summary>
+    /// Serializa as edicoes, agrupando tiles iguais e adjacentes na mesma linha em um unico
+    /// setor. Sem isso, um interior editado viraria centenas de retangulos 1x1 no JSON.
+    /// </summary>
+    public GeometryFile ToFile(string locationName)
+    {
+        var file = new GeometryFile { Location = locationName };
+
+        for (int z = 0; z < this.height; z++)
+        {
+            int x = 0;
+            while (x < this.width)
+            {
+                if (!this.edits.TryGetValue((x, z), out var value))
+                {
+                    x++;
+                    continue;
+                }
+
+                int start = x;
+                while (x < this.width
+                    && this.edits.TryGetValue((x, z), out var next)
+                    && next == value)
+                {
+                    x++;
+                }
+
+                file.Sectors.Add(new GeometrySector
+                {
+                    Area = new Rectangle(start, z, x - start, 1),
+                    FloorHeight = value.Floor,
+                    WallTop = value.WallTop
+                });
+            }
+        }
+
+        return file;
+    }
+
+    public void MarkSaved() => this.HasUnsavedEdits = false;
 
     /// <summary>Roda a heuristica sobre o mapa e depois aplica os setores autorais.</summary>
     public LocationGeometry Bake()
@@ -96,10 +170,14 @@ public sealed class LocationGeometry
                         this.floor[i] = sector.FloorHeight.Value;
                     if (sector.WallTop.HasValue)
                         this.wallTop[i] = sector.WallTop.Value;
+
+                    // Reentra como edicao para que o editor continue de onde parou.
+                    this.edits[(x, z)] = (this.floor[i], this.wallTop[i]);
                 }
             }
         }
 
+        this.HasUnsavedEdits = false;
         return this;
     }
 

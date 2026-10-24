@@ -8,7 +8,7 @@ using StardewValley3D.Rendering;
 namespace StardewValley3D.Input;
 
 /// <summary>
-/// Traduz input de shooter em terceira pessoa para o que o Farmer entende.
+/// Traduz input de shooter em primeira pessoa para o que o Farmer entende.
 ///
 /// Duas conversoes importam:
 ///   1. WASD relativo a camera -> Farmer.setMoving() com as flags de direcao do jogo
@@ -17,7 +17,7 @@ namespace StardewValley3D.Input;
 ///      Como TODA ferramenta do Stardew age no tile sob o cursor, farming, mineracao e
 ///      combate passam a funcionar em 3D sem tocar na logica de nenhuma delas.
 /// </summary>
-public sealed class ThirdPersonInput
+public sealed class FirstPersonInput
 {
     private readonly IModHelper helper;
     private readonly ModConfig config;
@@ -33,7 +33,7 @@ public sealed class ThirdPersonInput
     public Vector2 AimPixel { get; private set; }
     public bool HasAim { get; private set; }
 
-    public ThirdPersonInput(IModHelper helper, ModConfig config, Camera3D camera)
+    public FirstPersonInput(IModHelper helper, ModConfig config, Camera3D camera)
     {
         this.helper = helper;
         this.config = config;
@@ -126,9 +126,9 @@ public sealed class ThirdPersonInput
         if (world.X > threshold) player.setMoving(Farmer.right);
         if (world.X < -threshold) player.setMoving(Farmer.left);
 
-        // Com mira ativa o personagem encara a camera; sem ela, encara o movimento.
-        if (this.HasAim)
-            player.faceDirection(this.DirectionFromVector(this.camera.FlatForward));
+        // Em primeira pessoa o corpo sempre acompanha o olhar: e o olhar que define para
+        // onde a ferramenta e usada.
+        player.faceDirection(this.DirectionFromVector(this.camera.FlatForward));
     }
 
     private void UpdateAim()

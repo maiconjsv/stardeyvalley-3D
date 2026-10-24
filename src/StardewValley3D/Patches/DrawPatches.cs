@@ -4,6 +4,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using StardewModdingAPI;
 using StardewValley;
+using StardewValley.Menus;
 
 namespace StardewValley3D.Patches;
 
@@ -11,13 +12,13 @@ namespace StardewValley3D.Patches;
 /// Desvia o desenho do mundo para o renderizador 3D.
 ///
 /// Decisao de design: NAO reimplementamos a HUD nem os menus. O prefix desenha a cena 3D e
-/// em seguida chama de volta os metodos privados de UI do proprio jogo via reflection, para
-/// que tudo (HUD, menus, mensagens, overlays de clima) continue identico ao vanilla e nao
-/// quebre a cada atualizacao do Stardew.
+/// em seguida chama de volta os metodos de UI do proprio jogo, para que tudo (HUD, menus,
+/// mensagens) continue identico ao vanilla e nao quebre a cada atualizacao do Stardew.
 /// </summary>
 internal static class DrawPatches
 {
     private static IMonitor monitor = null!;
+    private static IReflectedMethod? drawHud;
 
     public static void Apply(Harmony harmony, IMonitor monitorInstance)
     {
@@ -49,6 +50,9 @@ internal static class DrawPatches
 
             mod.Renderer.DrawWorld();
 
+            if (mod.Editor.Active && mod.Input.HasAim)
+                mod.Renderer.DrawTileHighlight(mod.Input.AimTile, mod.Editor.BrushSize, Color.Lime);
+
             // UI por cima, em 2D, usando o pipeline do proprio jogo.
             Game1.spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, null, null);
             DrawVanillaUi(mod);
@@ -66,8 +70,34 @@ internal static class DrawPatches
 
     private static void DrawVanillaUi(ModEntry mod)
     {
-        // TODO Fase 1: chamar drawHUD/drawDialogueBox do Game1 via Helper.Reflection,
-        // mais Game1.activeClickableMenu?.draw(Game1.spriteBatch) e Game1.onScreenMenus.
+        // A HUD do jogo e um metodo privado de Game1. Chamar o original em vez de
+        // reimplementa-lo mantem relogio, energia, dinheiro e barra de ferramentas exatos,
+        // e evita ter de reescrever tudo a cada atualizacao do jogo.
+        try
+        {
+            drawHud ??= mod.Helper.Reflection.GetMethod(Game1.game1, "drawHUD");
+            drawHud.Invoke();
+        }
+        catch (Exception ex)
+        {
+            monitor.LogOnce($"Nao foi possivel desenhar a HUD vanilla: {ex.Message}", LogLevel.Warn);
+        }
+
+        foreach (IClickableMenu menu in Game1.onScreenMenus)
+        {
+            try
+            {
+                menu.draw(Game1.spriteBatch);
+            }
+            catch (Exception)
+            {
+                // Um menu de HUD quebrado nao deve derrubar o frame.
+            }
+        }
+
         Game1.activeClickableMenu?.draw(Game1.spriteBatch);
+
+        if (Game1.activeClickableMenu is not null)
+            Game1.game1.drawMouseCursor();
     }
 }
