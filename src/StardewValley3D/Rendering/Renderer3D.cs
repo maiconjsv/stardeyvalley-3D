@@ -27,6 +27,8 @@ public sealed class Renderer3D
     public Camera3D Camera { get; }
     public int LastTriangleCount { get; private set; }
     public int LastBillboardCount { get; private set; }
+    /// <summary>Resumo da malha da localizacao atual, para diagnostico na tela.</summary>
+    public string LastMeshSummary { get; private set; } = "-";
 
     public Renderer3D(IMonitor monitor, ModConfig config)
     {
@@ -84,17 +86,33 @@ public sealed class Renderer3D
         LocationGeometry geometry = this.GetGeometry(location);
         LocationMesh mesh = this.geometryBuilder.GetOrBuild(this.device, location, geometry);
 
-        this.device.Clear(ClearOptions.Target | ClearOptions.DepthBuffer, this.AmbientColor(), 1f, 0);
+        Color horizon = this.HorizonColor();
+
+        this.device.Clear(ClearOptions.Target | ClearOptions.DepthBuffer, horizon, 1f, 0);
         this.device.DepthStencilState = DepthStencilState.Default;
-        this.device.RasterizerState = RasterizerState.CullCounterClockwise;
+
+        // CullNone na Fase 1: a orientacao das faces ainda nao esta validada, e uma face
+        // invertida custa a tela inteira preta. Ligar o culling e tarefa da Fase 8.
+        this.device.RasterizerState = RasterizerState.CullNone;
         this.device.SamplerStates[0] = SamplerState.PointClamp;
         this.device.BlendState = BlendState.Opaque;
 
         this.effect.World = Matrix.Identity;
         this.effect.View = this.Camera.View;
         this.effect.Projection = this.Camera.Projection;
+        this.effect.TextureEnabled = true;
+        this.effect.LightingEnabled = false;
+
+        // A cor do mundo vem da textura; tingir aqui escureceria tudo.
+        this.effect.DiffuseColor = Vector3.One;
+        this.effect.Alpha = 1f;
+
+        // O fog recebe a cor do horizonte para que a distancia dissolva no ceu, em vez de
+        // virar uma parede preta.
         this.effect.FogEnabled = this.config.DistanceFog;
-        this.effect.DiffuseColor = this.AmbientColor().ToVector3();
+        this.effect.FogColor = horizon.ToVector3();
+
+        this.LastMeshSummary = $"chunks={mesh.ChunkCount} submalhas={mesh.SubmeshCount} tris={mesh.TriangleCount}";
 
         this.DrawStaticMesh(mesh);
         this.DrawBillboards(location);
@@ -110,14 +128,19 @@ public sealed class Renderer3D
             if (this.Camera.Frustum.Contains(chunk.Bounds) == ContainmentType.Disjoint)
                 continue;
 
-            this.device.SetVertexBuffer(chunk.Buffer);
-            foreach (EffectPass pass in this.effect.CurrentTechnique.Passes)
+            foreach (Submesh submesh in chunk.Submeshes)
             {
-                pass.Apply();
-                this.device.DrawPrimitives(PrimitiveType.TriangleList, 0, chunk.TriangleCount);
-            }
+                this.effect.Texture = submesh.Texture;
+                this.device.SetVertexBuffer(submesh.Buffer);
 
-            this.LastTriangleCount += chunk.TriangleCount;
+                foreach (EffectPass pass in this.effect.CurrentTechnique.Passes)
+                {
+                    pass.Apply();
+                    this.device.DrawPrimitives(PrimitiveType.TriangleList, 0, submesh.TriangleCount);
+                }
+
+                this.LastTriangleCount += submesh.TriangleCount;
+            }
         }
 
         this.device.SetVertexBuffer(null);
@@ -132,16 +155,19 @@ public sealed class Renderer3D
     }
 
     /// <summary>
-    /// Luz ambiente derivada do proprio estado do jogo, para que dia/noite/estacao/clima
-    /// continuem valendo sem duplicarmos regra nenhuma.
+    /// Cor do ceu/horizonte, usada no clear e no fog. Derivada da hora do jogo para que
+    /// dia e noite continuem valendo sem duplicarmos regra nenhuma.
+    /// TODO Fase 6: substituir por iluminacao real a partir de Game1.outdoorLight e das
+    /// luzes pontuais em Game1.currentLightSources.
     /// </summary>
-    private Color AmbientColor()
+    private Color HorizonColor()
     {
-        Color ambient = Game1.ambientLight;
-        return new Color(
-            (byte)(255 - ambient.R),
-            (byte)(255 - ambient.G),
-            (byte)(255 - ambient.B));
+        if (Game1.currentLocation?.IsOutdoors != true)
+            return new Color(12, 10, 16);
+
+        // timeOfDay vai de 600 (6h) a 2600 (2h da madrugada seguinte).
+        float t = MathHelper.Clamp((Game1.timeOfDay - 600) / 1400f, 0f, 1f);
+        return Color.Lerp(new Color(132, 186, 227), new Color(18, 20, 48), t);
     }
 
     private LocationGeometry GetGeometry(GameLocation location)

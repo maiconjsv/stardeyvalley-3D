@@ -10,7 +10,9 @@ public sealed class DebugHud
 {
     private readonly ModConfig config;
 
-    public bool Visible { get; set; }
+    /// <summary>Ligado por padrao enquanto o renderizador esta em desenvolvimento: sem os
+    /// contadores na tela, uma tela preta nao diz se a geometria foi construida. F10 desliga.</summary>
+    public bool Visible { get; set; } = true;
 
     public DebugHud(ModConfig config) => this.config = config;
 
@@ -27,7 +29,8 @@ public sealed class DebugHud
             $"SV3D  loc={Game1.currentLocation?.NameOrUniqueName ?? "-"}",
             $"cam   pos={camera.Position.X:F1},{camera.Position.Y:F1},{camera.Position.Z:F1}  yaw={MathHelper.ToDegrees(camera.Yaw):F0}  pitch={MathHelper.ToDegrees(camera.Pitch):F0}  dist={camera.Distance:F1}",
             $"aim   tile={mod.Input.AimTile.X:F0},{mod.Input.AimTile.Y:F0}  valid={mod.Input.HasAim}",
-            $"draw  tris={mod.Renderer.LastTriangleCount}  billboards={mod.Renderer.LastBillboardCount}"
+            $"draw  tris={mod.Renderer.LastTriangleCount}  billboards={mod.Renderer.LastBillboardCount}",
+            $"mesh  {mod.Renderer.LastMeshSummary}"
         };
 
         for (int i = 0; i < lines.Length; i++)
