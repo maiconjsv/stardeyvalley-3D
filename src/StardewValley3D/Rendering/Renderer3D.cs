@@ -24,6 +24,7 @@ public sealed class Renderer3D
 
     private GraphicsDevice device = null!;
     private BasicEffect effect = null!;
+    private AlphaTestEffect worldEffect = null!;
     private IModHelper helper = null!;
     private SpriteMeshBuilder spriteMeshes = null!;
 
@@ -47,13 +48,22 @@ public sealed class Renderer3D
         this.spriteMeshes = new SpriteMeshBuilder(device, this.monitor);
         this.sprites.Initialize(device);
 
+        // A malha do mundo precisa de alpha test: as camadas Buildings e Front sao quase
+        // todas transparentes, e sem recorte cada pixel vazio vira preto opaco -- e ainda
+        // escreve no depth buffer, escondendo o que estiver atras.
+        this.worldEffect = new AlphaTestEffect(device)
+        {
+            AlphaFunction = CompareFunction.Greater,
+            ReferenceAlpha = 128,
+            VertexColorEnabled = false
+        };
+
+        // BasicEffect fica so para as linhas do editor, que nao tem textura.
         this.effect = new BasicEffect(device)
         {
-            TextureEnabled = true,
-            VertexColorEnabled = false,
-            LightingEnabled = false,
-            FogStart = 12f,
-            FogEnd = 44f
+            TextureEnabled = false,
+            VertexColorEnabled = true,
+            LightingEnabled = false
         };
     }
 
@@ -111,20 +121,22 @@ public sealed class Renderer3D
         this.device.SamplerStates[0] = SamplerState.PointClamp;
         this.device.BlendState = BlendState.Opaque;
 
-        this.effect.World = Matrix.Identity;
-        this.effect.View = this.Camera.View;
-        this.effect.Projection = this.Camera.Projection;
-        this.effect.TextureEnabled = true;
-        this.effect.LightingEnabled = false;
+        this.worldEffect.World = Matrix.Identity;
+        this.worldEffect.View = this.Camera.View;
+        this.worldEffect.Projection = this.Camera.Projection;
 
         // A cor do mundo vem da textura; tingir aqui escureceria tudo.
-        this.effect.DiffuseColor = Vector3.One;
-        this.effect.Alpha = 1f;
+        this.worldEffect.DiffuseColor = Vector3.One;
+        this.worldEffect.Alpha = 1f;
 
-        // O fog recebe a cor do horizonte para que a distancia dissolva no ceu, em vez de
-        // virar uma parede preta.
-        this.effect.FogEnabled = this.config.DistanceFog;
-        this.effect.FogColor = horizon.ToVector3();
+        this.ApplyFog(this.worldEffect.FogEnabled, horizon);
+        this.worldEffect.FogEnabled = this.config.DistanceFog;
+        this.worldEffect.FogColor = horizon.ToVector3();
+        this.worldEffect.FogStart = this.FogStart;
+        this.worldEffect.FogEnd = this.FogEnd;
+
+        this.effect.View = this.Camera.View;
+        this.effect.Projection = this.Camera.Projection;
 
         this.LastMeshSummary = $"chunks={mesh.ChunkCount} submalhas={mesh.SubmeshCount} tris={mesh.TriangleCount}";
 
@@ -135,7 +147,6 @@ public sealed class Renderer3D
     private void DrawStaticMesh(LocationMesh mesh)
     {
         this.LastTriangleCount = 0;
-        this.effect.VertexColorEnabled = false;
 
         foreach (MeshChunk chunk in mesh.Chunks)
         {
@@ -144,10 +155,10 @@ public sealed class Renderer3D
 
             foreach (Submesh submesh in chunk.Submeshes)
             {
-                this.effect.Texture = submesh.Texture;
+                this.worldEffect.Texture = submesh.Texture;
                 this.device.SetVertexBuffer(submesh.Buffer);
 
-                foreach (EffectPass pass in this.effect.CurrentTechnique.Passes)
+                foreach (EffectPass pass in this.worldEffect.CurrentTechnique.Passes)
                 {
                     pass.Apply();
                     this.device.DrawPrimitives(PrimitiveType.TriangleList, 0, submesh.TriangleCount);
@@ -164,7 +175,7 @@ public sealed class Renderer3D
     {
         this.sprites.Begin();
         this.collector.Collect(location, this.Camera, this.config, this.spriteMeshes, this.sprites);
-        this.sprites.End(this.device, this.Camera, Color.White);
+        this.sprites.End(this.device, this.Camera, Color.White, this.config.DistanceFog, this.HorizonColor(), this.FogStart, this.FogEnd);
 
         this.LastSpriteCount = this.sprites.LastInstanceCount;
         this.LastTriangleCount += this.sprites.LastTriangleCount;
@@ -192,9 +203,6 @@ public sealed class Renderer3D
             new VertexPositionColor(new Vector3(x0, y, z0), color)
         };
 
-        this.effect.TextureEnabled = false;
-        this.effect.VertexColorEnabled = true;
-        this.effect.FogEnabled = false;
         this.device.DepthStencilState = DepthStencilState.DepthRead;
 
         foreach (EffectPass pass in this.effect.CurrentTechnique.Passes)
@@ -202,9 +210,20 @@ public sealed class Renderer3D
             pass.Apply();
             this.device.DrawUserPrimitives(PrimitiveType.LineStrip, corners, 0, 4);
         }
+    }
 
-        this.effect.TextureEnabled = true;
-        this.effect.VertexColorEnabled = false;
+    /// <summary>
+    /// Alcance do fog. Interiores recebem um fog curto, que e o que da a atmosfera fechada;
+    /// exteriores recebem um fog longo, cuja funcao principal e dissolver a borda do mapa no
+    /// horizonte em vez de deixar o vazio aparecer.
+    /// </summary>
+    private float FogStart => Game1.currentLocation?.IsOutdoors == true ? 26f : 6f;
+
+    private float FogEnd => Game1.currentLocation?.IsOutdoors == true ? 72f : 26f;
+
+    private void ApplyFog(bool _, Color __)
+    {
+        // Ponto de extensao da Fase 6 (clima e hora alteram o alcance do fog).
     }
 
     /// <summary>

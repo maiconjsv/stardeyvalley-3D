@@ -35,6 +35,10 @@ public sealed class ModConfig
     /// qualquer angulo. Desligar economiza geometria.</summary>
     public bool CrossMeshProps { get; set; } = true;
     public bool BlobShadows { get; set; } = true;
+    /// <summary>Preenche a borda do mapa com mata, para que o vazio nao apareca.</summary>
+    public bool MapBorderForest { get; set; } = true;
+    /// <summary>Raio, em tiles, dentro do qual a mata de borda e desenhada.</summary>
+    public float MapBorderDistance { get; set; } = 70f;
 
     // --- Seguranca / fallback ---
     /// <summary>Volta ao render 2D em cutscenes e festivais (recomendado ate a Fase 5).</summary>

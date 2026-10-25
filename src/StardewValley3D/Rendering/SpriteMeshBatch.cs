@@ -48,7 +48,7 @@ public sealed class SpriteMeshBatch
             this.instances.Add(instance);
     }
 
-    public void End(GraphicsDevice device, Camera3D camera, Color ambient)
+    public void End(GraphicsDevice device, Camera3D camera, Color ambient, bool fog, Color fogColor, float fogStart, float fogEnd)
     {
         this.LastInstanceCount = this.instances.Count;
         this.LastTriangleCount = 0;
@@ -63,6 +63,10 @@ public sealed class SpriteMeshBatch
 
         this.effect.View = camera.View;
         this.effect.Projection = camera.Projection;
+        this.effect.FogEnabled = fog;
+        this.effect.FogColor = fogColor.ToVector3();
+        this.effect.FogStart = fogStart;
+        this.effect.FogEnd = fogEnd;
 
         // Agrupa por malha para trocar o vertex buffer o minimo possivel.
         // TODO Fase 8: instancing por hardware, uma draw call por malha.

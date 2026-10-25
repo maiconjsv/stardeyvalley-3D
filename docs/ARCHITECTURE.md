@@ -86,6 +86,21 @@ O Stardew é 2D puro: **não existe dado de altura em lugar nenhum**. Três cama
 3. **Editor** (`tools/geometry-editor/`, Fase 2): pintar alturas sobre o `.tmx` e exportar o
    JSON — é o que torna o trabalho de conteúdo colaborável.
 
+## Alpha test, e por que ele não é um detalhe
+
+Tanto a malha do mundo quanto os sprites volumétricos são desenhados com `AlphaTestEffect`,
+nunca com alpha blending. Três coisas dependem disso:
+
+1. **Transparência correta.** As camadas `Buildings` e `Front` são quase todas transparentes.
+   Sem recorte, cada pixel vazio vira preto opaco — foi o que transformou as casas da Fazenda
+   em lajes pretas.
+2. **Profundidade correta.** Um pixel transparente desenhado como opaco também escreve no
+   depth buffer e esconde tudo que estiver atrás. Com alpha test, o pixel é descartado antes
+   disso, e a regra "o que está mais perto aparece na frente" passa a valer por pixel, de
+   graça, sem ordenar nada.
+3. **Sem ordenação.** É por isso que não existe sort por distância no caminho opaco: o depth
+   buffer resolve, inclusive entre sprites que se interpenetram.
+
 ## Performance
 
 - Malha estática em `VertexBuffer` por chunk de 16×16 tiles, construída uma vez por

@@ -109,9 +109,11 @@ Duas formas de montagem:
 
 - [x] Extrusão com merge de arestas, cache, alpha test
 - [x] Jogador (remoto), NPC, animal, árvore, objeto
-- [ ] Cultivos por estágio, grama, resource clumps, construções, debris, projéteis, móveis
+- [x] Construções, cultivos, grama, resource clumps, móveis
+- [x] **Mata de borda**: o vazio além do mapa é preenchido com floresta que dissolve no fog
+- [ ] Debris, projéteis, cercas, Bush, árvores frutíferas
 - [ ] Sombra projetada
-- [ ] Instancing por hardware (hoje é uma draw call por instância)
+- [ ] Instancing por hardware (hoje é uma draw call por instância — é o teto de performance atual)
 
 ## Fase 4 — Primeira pessoa
 **Objetivo:** controle de FPS, com o corpo do jogador fora de cena.
