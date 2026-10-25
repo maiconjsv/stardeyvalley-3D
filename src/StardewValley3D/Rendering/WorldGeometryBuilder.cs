@@ -30,6 +30,7 @@ public sealed class WorldGeometryBuilder
     private readonly IMonitor monitor;
     private readonly Dictionary<string, LocationMesh> cache = new();
     private readonly Dictionary<string, Texture2D?> textureCache = new();
+    private Texture2D? voidTexture;
 
     public WorldGeometryBuilder(IMonitor monitor) => this.monitor = monitor;
 
@@ -129,7 +130,69 @@ public sealed class WorldGeometryBuilder
             }
         }
 
+        if (!location.IsOutdoors)
+            this.EmitInteriorEnclosure(device, chunks, width, height);
+
         return new LocationMesh(chunks);
+    }
+
+    /// <summary>
+    /// Fecha o interior com uma caixa escura nos limites do mapa.
+    ///
+    /// Em 2D a area fora do mapa nunca era vista: a camera nao saia da sala. Em primeira
+    /// pessoa ela aparece como buracos pretos nas laterais. Esta caixa nao tenta imitar
+    /// parede -- so impede que o vazio fique a mostra ate a Fase 2 dar paredes de verdade
+    /// a cada interior.
+    /// </summary>
+    private void EmitInteriorEnclosure(GraphicsDevice device, List<MeshChunk> chunks, int width, int height)
+    {
+        Texture2D texture = this.EnsureVoidTexture(device);
+
+        const float bottom = -3f;
+        const float top = 8f;
+        float x0 = -0.5f, z0 = -0.5f;
+        float x1 = width + 0.5f, z1 = height + 0.5f;
+
+        var vertices = new List<VertexPositionTexture>(24);
+
+        void Wall(Vector3 a, Vector3 b)
+        {
+            Vector3 bl = new(a.X, bottom, a.Z);
+            Vector3 br = new(b.X, bottom, b.Z);
+            Vector3 tl = new(a.X, top, a.Z);
+            Vector3 tr = new(b.X, top, b.Z);
+
+            vertices.Add(new VertexPositionTexture(bl, new Vector2(0, 1)));
+            vertices.Add(new VertexPositionTexture(tl, new Vector2(0, 0)));
+            vertices.Add(new VertexPositionTexture(tr, new Vector2(1, 0)));
+
+            vertices.Add(new VertexPositionTexture(bl, new Vector2(0, 1)));
+            vertices.Add(new VertexPositionTexture(tr, new Vector2(1, 0)));
+            vertices.Add(new VertexPositionTexture(br, new Vector2(1, 1)));
+        }
+
+        Wall(new Vector3(x0, 0, z0), new Vector3(x1, 0, z0));
+        Wall(new Vector3(x1, 0, z0), new Vector3(x1, 0, z1));
+        Wall(new Vector3(x1, 0, z1), new Vector3(x0, 0, z1));
+        Wall(new Vector3(x0, 0, z1), new Vector3(x0, 0, z0));
+
+        var buffer = new VertexBuffer(device, typeof(VertexPositionTexture), vertices.Count, BufferUsage.WriteOnly);
+        buffer.SetData(vertices.ToArray());
+
+        chunks.Add(new MeshChunk(
+            new[] { new Submesh(texture, buffer, vertices.Count / 3) },
+            new BoundingBox(new Vector3(x0, bottom, z0), new Vector3(x1, top, z1))));
+    }
+
+    /// <summary>Textura opaca de uma cor so, usada para tapar o vazio.</summary>
+    private Texture2D EnsureVoidTexture(GraphicsDevice device)
+    {
+        if (this.voidTexture is not null && !this.voidTexture.IsDisposed)
+            return this.voidTexture;
+
+        this.voidTexture = new Texture2D(device, 1, 1);
+        this.voidTexture.SetData(new[] { new Color(26, 20, 28) });
+        return this.voidTexture;
     }
 
     /// <summary>Emite o quad horizontal de um tile, texturizado com a tilesheet real do mapa.</summary>

@@ -2,7 +2,7 @@
   "Name": "Stardew Valley 3D",
   "Author": "maicon",
   "Version": "0.1.0",
-  "Description": "Renderizador 3D em terceira pessoa com sprites 2D billboard (estilo Doom / Boltgun), mantendo toda a logica do jogo intacta.",
+  "Description": "Renderizador 3D em primeira pessoa com os sprites 2D extrudados em volumes (estilo Doom / Boltgun), mantendo toda a logica do jogo intacta.",
   "UniqueID": "maicon.StardewValley3D",
   "EntryDll": "StardewValley3D.dll",
   "MinimumApiVersion": "4.0.0",

@@ -32,7 +32,7 @@ public sealed class Camera3D
     public Camera3D(ModConfig config)
     {
         this.config = config;
-        this.Distance = config.CameraDistance;
+        this.Distance = config.FirstPerson ? 0f : config.CameraDistance;
     }
 
     /// <summary>Distancia zero significa primeira pessoa: a camera fica nos olhos.</summary>

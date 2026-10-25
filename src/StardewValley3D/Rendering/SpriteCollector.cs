@@ -225,10 +225,10 @@ public sealed class SpriteCollector
 
     private void CollectObjects(GameLocation location, ModConfig config, SpriteMeshBuilder builder, SpriteMeshBatch batch)
     {
-        foreach ((Vector2 tile, SObject obj) in location.objects.Pairs)
+        foreach ((Vector2 _, SObject obj) in location.objects.Pairs)
         {
             if (TryGetItemSprite(obj.QualifiedItemId, out Texture2D? texture, out Rectangle source))
-                this.AddProp(batch, builder, config, texture!, source, new Vector3(tile.X + 0.5f, 0f, tile.Y + 1f));
+                this.AddProp(batch, builder, config, texture!, source, AnchorFromBounds(obj.boundingBox.Value));
         }
     }
 
@@ -237,10 +237,7 @@ public sealed class SpriteCollector
         foreach (Furniture furniture in location.furniture)
         {
             if (TryGetItemSprite(furniture.QualifiedItemId, out Texture2D? texture, out Rectangle source))
-            {
-                this.AddProp(batch, builder, config, texture!, source,
-                    new Vector3(furniture.TileLocation.X + 0.5f, 0f, furniture.TileLocation.Y + 1f));
-            }
+                this.AddProp(batch, builder, config, texture!, source, AnchorFromBounds(furniture.boundingBox.Value));
         }
     }
 
@@ -325,6 +322,14 @@ public sealed class SpriteCollector
         if (mesh is not null)
             batch.Add(new SpriteInstance { Mesh = mesh, Anchor = anchor, Tint = Color.White });
     }
+
+    /// <summary>
+    /// Ancora um movel ou objeto pela base da sua caixa de colisao, nao pelo tile de origem.
+    /// Um sofa ocupa varios tiles: ancorado no tile de origem, ele flutua e fica deslocado
+    /// para o norte, que e exatamente o que acontecia.
+    /// </summary>
+    private static Vector3 AnchorFromBounds(Rectangle bounds)
+        => new(bounds.Center.X / 64f, 0f, bounds.Bottom / 64f);
 
     private static bool TryGetItemSprite(string qualifiedItemId, out Texture2D? texture, out Rectangle source)
     {

@@ -16,8 +16,10 @@ public sealed class ModConfig
     // --- Camera ---
     /// <summary>Campo de visao vertical, em graus.</summary>
     public float FieldOfView { get; set; } = 70f;
-    /// <summary>Distancia da camera ao jogador, em tiles. Zero = primeira pessoa.</summary>
-    public float CameraDistance { get; set; } = 0f;
+    /// <summary>Primeira pessoa. Tem precedencia sobre <see cref="CameraDistance"/>.</summary>
+    public bool FirstPerson { get; set; } = true;
+    /// <summary>Distancia da camera em terceira pessoa, em tiles.</summary>
+    public float CameraDistance { get; set; } = 4.5f;
     /// <summary>Altura dos olhos acima dos pes do jogador, em tiles.</summary>
     public float EyeHeight { get; set; } = 1.35f;
     public float MouseSensitivity { get; set; } = 0.15f;
